@@ -20,24 +20,15 @@
         <url>https://github.com/ZUGFeRD/mustangproject</url>
         <tag>core-2.3.2</tag>
     </scm>
-    <repositories>
-        <repository><!-- for jargs -->
-            <id>sonatype-oss-public</id>
-            <url>https://oss.sonatype.org/content/groups/public/</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
     <distributionManagement>
         <repository>
-            <id>internal.repo</id>
-            <name>Temporary Staging Repository</name>
-            <url>file://${project.build.directory}/mvn-repo</url>
+            <id>nexus-releases</id>
+            <url>https://nexus.enercoop.org/repository/maven-releases/</url>
         </repository>
+        <snapshotRepository>
+            <id>nexus-snapshots</id>
+            <url>https://nexus.enercoop.org/repository/maven-snapshots/</url>
+        </snapshotRepository>
     </distributionManagement>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
