@@ -32,7 +32,7 @@ public class LineCalculator {
 		IAbsoluteValueProvider itemBasisProvider = new IAbsoluteValueProvider() {
 			@Override
 			public BigDecimal getValue() {
-				return currentItem.getPrice().divide(basisQuantity, 18, RoundingMode.HALF_UP);
+				return currentItem.getPrice().divide(basisQuantity, 18, RoundingMode.HALF_EVEN);
 			}
 			@Override
 			public BigDecimal getQuantity() {
@@ -107,10 +107,10 @@ public class LineCalculator {
 
 		price = price.add(delta);
 
-		itemTotalNetAmount = quantity.multiply(price).divide(basisQuantity, 18, RoundingMode.HALF_UP)
+		itemTotalNetAmount = quantity.multiply(price).divide(basisQuantity, 18, RoundingMode.HALF_EVEN)
 			.add(lineCharge).subtract(lineAllowance)
-			.subtract(allowanceItemTotal.setScale(2, RoundingMode.HALF_UP))
-			.setScale(2, RoundingMode.HALF_UP);
+			.subtract(allowanceItemTotal.setScale(2, RoundingMode.HALF_EVEN))
+			.setScale(2, RoundingMode.HALF_EVEN);
 		if (BigDecimal.ZERO.setScale(2).equals(itemTotalNetAmount) && "GROUP".equals(currentItem.getLineStatusReasonCode())) {
 			itemTotalNetAmount = currentItem.getLineTotalAmount();
 		}

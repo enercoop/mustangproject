@@ -530,7 +530,7 @@ public class CalculationTest extends ResourceCase {
 		item.addAllowance(new Allowance().setPercent(new BigDecimal(10)));
 
 		LineCalculator lc = item.getCalculation();
-		assertEquals(new BigDecimal("57.83"), lc.getItemTotalNetAmount());
+		assertEquals(new BigDecimal("57.82"), lc.getItemTotalNetAmount());
 	}
 
 	@Test
