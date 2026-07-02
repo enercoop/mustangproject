@@ -3,7 +3,7 @@
     <parent>
         <groupId>org.mustangproject</groupId>
         <artifactId>core</artifactId>
-        <version>enercoop-2.24.1</version>
+        <version>enercoop-2.24.4</version>
     </parent>
 
     <modelVersion>4.0.0</modelVersion>
