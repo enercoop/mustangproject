@@ -1,13 +1,17 @@
 package org.mustangproject.commandline;
 
-import java.io.*;
-import java.nio.charset.StandardCharsets;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -41,7 +45,11 @@ public class CliIT {
 	public void testCii2Ubl() throws Exception {
 		Path output = Paths.get("target/ubl.xml");
 		Files.deleteIfExists(output);
-		Path jar = Files.newDirectoryStream(Paths.get("target"), "Mustang-CLI-*.jar").iterator().next();
+		// failsafe passes the path of the shaded jar, which only exists after the package phase,
+		// when running from an IDE instead just take what is in target
+		String configuredJar = System.getProperty("cli.jar");
+		Path jar = configuredJar != null ? Paths.get(configuredJar)
+			: Files.newDirectoryStream(Paths.get("target"), "Mustang-CLI-*.jar").iterator().next();
 		ProcessBuilder pb = new ProcessBuilder("java", "-jar", jar.toString(),
 			"--action", "ubl", "--source", "src/test/resources/cii.xml", "--out",
 			output.toString());
@@ -52,7 +60,7 @@ public class CliIT {
 		if (!result.isEmpty()) {
 			System.out.println(result);
 		}
-		assertTrue(new String(Files.readAllBytes(output), StandardCharsets.UTF_8).contains("Invoice"));
+		assertTrue(Files.readString(output).contains("Invoice"));
 	}
 
 	private String getOutput(Process process) throws IOException {
@@ -61,7 +69,7 @@ public class CliIT {
 		String line;
 		while ((line = reader.readLine()) != null) {
 			builder.append(line);
-			builder.append(System.getProperty("line.separator"));
+			builder.append(System.lineSeparator());
 		}
 		return builder.toString();
 	}

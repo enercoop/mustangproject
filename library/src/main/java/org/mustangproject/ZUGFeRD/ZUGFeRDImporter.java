@@ -6,6 +6,8 @@
  * and limitations under the License.
  */
 package org.mustangproject.ZUGFeRD;
+import java.io.IOException;
+import java.io.InputStream;
 /**
  * Mustangproject's ZUGFeRD implementation ZUGFeRD importer Licensed under the APLv2
  *
@@ -13,28 +15,35 @@ package org.mustangproject.ZUGFeRD;
  * @version 1.1.0
  * @author jstaerk
  */
-import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpression;
 import javax.xml.xpath.XPathFactory;
 
-import org.mustangproject.*;
+import org.mustangproject.FileAttachment;
+import org.mustangproject.Invoice;
+import org.mustangproject.Item;
+import org.mustangproject.Product;
+import org.mustangproject.ReferencedDocument;
+import org.mustangproject.SchemedID;
+import org.mustangproject.XMLTools;
+import org.mustangproject.util.NodeMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-import org.xml.sax.SAXException;
 
 public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ZUGFeRDImporter.class);
+
+	private final SimpleDateFormat sdf102 = new SimpleDateFormat("yyyyMMdd");
 
 	public ZUGFeRDImporter() {
 		super();
@@ -54,8 +63,9 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * for XML embedded files please use ZUGFeRDInvoiceImporter.getFileAttachmentsXML
 	 * @return a ArrayList of FileAttachments, empty if none
 	 */
+	@Override
 	public List<FileAttachment> getFileAttachmentsPDF() {
-		return PDFAttachments;
+		return pdfAttachments;
 	}
 
 
@@ -205,7 +215,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 */
 	public String getBuyertradePartySpecifiedTaxRegistrationID() {
 		String id = null;
-		if  ((importedInvoice.getRecipient()!=null) && (importedInvoice.getRecipient().getLegalOrganisation()!=null)) {
+		if (importedInvoice.getRecipient() != null && importedInvoice.getRecipient().getLegalOrganisation() != null) {
 			// this *should* be the official result
 			id = importedInvoice.getRecipient().getLegalOrganisation().getSchemedID().getID();
 		}
@@ -272,15 +282,31 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	}
 
 	/**
-	 * @return the Taxpoint Date
+	 * Returns the Delivery Date.
+	 * @return the delivery date
 	 */
+	public String getDeliveryDate() {
+		try {
+			return extractString("//*[local-name() = 'ActualDeliverySupplyChainEvent']//*[local-name() = 'OccurrenceDateTime']//*[local-name() = 'DateTimeString']");
+		} catch (final Exception e) {
+			// Exception was already logged
+			return "";
+		}
+	}
+
+	/**
+	 * Returns the Delivery Date, not as supposed the dedicated Taxpoint Date.
+	 * In many cases the delivery date is used as the tax date.
+	 * {@link  #getDeliveryDate()} should be used preferably to get the delivery date.
+	 * For getting the TaxPointDate use {@link ZUGFeRDInvoiceImporter#extractInvoice()} followed by {@link Invoice#getTaxPointDate()}.
+	 * Subject to be changed in the future.
+	 * @deprecated Subject to be changed in the future, use {@link #getDeliveryDate()} to get the delivery date
+	 * @return the delivery date
+	 */
+	@Deprecated(since = "2.26.2")
 	public String getTaxPointDate() {
 		try {
-			if (getVersion() == 1) {
-				return extractString("//*[local-name() = 'ActualDeliverySupplyChainEvent']//*[local-name() = 'OccurrenceDateTime']//*[local-name() = 'DateTimeString']");
-			} else {
-				return extractString("//*[local-name() = 'ActualDeliverySupplyChainEvent']//*[local-name() = 'OccurrenceDateTime']//*[local-name() = 'DateTimeString']");
-			}
+			return extractString("//*[local-name() = 'ActualDeliverySupplyChainEvent']//*[local-name() = 'OccurrenceDateTime']//*[local-name() = 'DateTimeString']");
 		} catch (final Exception e) {
 			// Exception was already logged
 			return "";
@@ -340,23 +366,22 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * @return the sender's account IBAN code
 	 */
 	public String getIBAN() {
-		if ((importedInvoice==null)||(importedInvoice.getTradeSettlement()==null)) {
-			return null;
-		}
-		for (IZUGFeRDTradeSettlement settlement : importedInvoice.getTradeSettlement()) {
-			if (settlement instanceof IZUGFeRDTradeSettlementDebit) {
-				return ((IZUGFeRDTradeSettlementDebit) settlement).getIBAN();
+		if (importedInvoice != null && importedInvoice.getTradeSettlement() != null) {
+			for (IZUGFeRDTradeSettlement settlement : importedInvoice.getTradeSettlement()) {
+				if (settlement instanceof IZUGFeRDTradeSettlementDebit) {
+					return ((IZUGFeRDTradeSettlementDebit) settlement).getIBAN();
+				}
+				if (settlement instanceof IZUGFeRDTradeSettlementPayment) {
+					return ((IZUGFeRDTradeSettlementPayment) settlement).getOwnIBAN();
+				}
 			}
-			if (settlement instanceof IZUGFeRDTradeSettlementPayment) {
-				return ((IZUGFeRDTradeSettlementPayment) settlement).getOwnIBAN();
-			}
 		}
-		return null;
+		return extractString("//*[local-name() = 'PayeePartyCreditorFinancialAccount']/*[local-name() = 'IBANID']");
 	}
 
 
 	public String getHolder() {
-		if (importedInvoice!=null && importedInvoice.getTradeSettlement()!=null) {
+		if (importedInvoice != null && importedInvoice.getTradeSettlement() != null) {
 			for (IZUGFeRDTradeSettlement settlement : importedInvoice.getTradeSettlement()) {
 				if (settlement instanceof IZUGFeRDTradeSettlementPayment) {
 					String s = ((IZUGFeRDTradeSettlementPayment) settlement).getAccountName();
@@ -382,8 +407,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * @return when the payment is due
 	 */
 	public String getDueDate() {
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
-		return sdf.format(importedInvoice.getDueDate());
+		return sdf102.format(importedInvoice.getDueDate());
 	}
 
 
@@ -426,8 +450,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 * @return the Issue Date()
 	 */
 	public String getIssueDate() {
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
-		return sdf.format(importedInvoice.getIssueDate());
+		return sdf102.format(importedInvoice.getIssueDate());
 	}
 
 	public Date getDetailedDeliveryPeriodFrom() {
@@ -587,7 +610,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 				for (int j = 0; j < nodes.getLength(); j++) {
 					n = nodes.item(j);
 					final short nodeType = n.getNodeType();
-					if ((nodeType == Node.ELEMENT_NODE) && (n.getLocalName() != null)) {
+					if (nodeType == Node.ELEMENT_NODE && n.getLocalName() != null) {
 						switch (n.getLocalName()) {
 							case "PostcodeCode":
 								address.setPostCodeCode("");
@@ -631,6 +654,8 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 									address.setCountrySubDivisionName(n.getFirstChild().getNodeValue());
 								}
 								break;
+							default:
+								break;
 						}
 					}
 				}
@@ -641,7 +666,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 
 	/**
 	 * returns a list of LineItems
-	 * @deprecated use invoiceimporter getZFItems
+	 * @deprecated use invoice::getZFItems
 	 *
 	 * @return a List of LineItem instances
 	 */
@@ -658,7 +683,6 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 			for (int i = 0; i < nl.getLength(); i++) {
 				final Node nn = nl.item(i);
 				Node node = null;
-				Node subnode = null;
 				if (nn.getLocalName() != null) {
 					switch (nn.getLocalName()) {
 						case "SpecifiedLineTradeAgreement":
@@ -716,28 +740,10 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 						case "SpecifiedLineTradeDelivery":
 						case "SpecifiedSupplyChainTradeDelivery":
 							node = getNodeByName(nn.getChildNodes(), "BilledQuantity");
-							lineItem.setQuantity(XMLTools.tryBigDecimal(node));
-
-							node = getNodeByName(nn.getChildNodes(), "DeliveryNoteReferencedDocument");
 							if (node != null) {
-								subnode = getNodeByName(node.getChildNodes(), "IssuerAssignedID");
-								if (subnode != null) {
-									lineItem.setDeliveryNoteReferencedDocumentID(XMLTools.getNodeValue(subnode));
-								}
-								subnode = getNodeByName(node.getChildNodes(), "LineID");
-								if (subnode != null) {
-									lineItem.setDeliveryNoteReferencedDocumentLineID(XMLTools.getNodeValue(subnode));
-								}
-								node = getNodeByName(node.getChildNodes(), "FormattedIssueDateTime");
-								if (node != null) {
-									NodeList FormattedIssueDateTimeChilds = node.getChildNodes();
-									for (int dateChildIndex = 0; dateChildIndex < FormattedIssueDateTimeChilds.getLength(); dateChildIndex++) {
-										if ((FormattedIssueDateTimeChilds.item(dateChildIndex).getLocalName() != null)
-											&& (FormattedIssueDateTimeChilds.item(dateChildIndex).getLocalName().equals("DateTimeString"))) {
-											lineItem.setDeliveryNoteReferencedDocumentDate(XMLTools.tryDate(FormattedIssueDateTimeChilds.item(dateChildIndex)));
-										}
-									}
-								}
+								lineItem.setQuantity(XMLTools.tryBigDecimal(node));
+								new NodeMap(node.getChildNodes()).getNode("DespatchAdviceReferencedDocument").map(ReferencedDocument::fromNode).ifPresent(rd -> lineItem.setDespatchAdviceReferencedDocument(rd));
+								new NodeMap(node.getChildNodes()).getNode("DeliveryNoteReferencedDocument").map(ReferencedDocument::fromNode).ifPresent(rd -> lineItem.setDeliveryNoteReferencedDocument(rd));
 							}
 							break;
 
@@ -757,7 +763,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 							node = getNodeByName(nn.getChildNodes(), "ApplicableTradeTax");
 							if (node != null) {
 								node = getNodeByName(node.getChildNodes(), "CategoryCode");
-								if(node != null){
+								if (node != null) {
 									lineItem.getProduct().setTaxCategoryCode(XMLTools.getNodeValue(node));
 								}
 							}
@@ -804,6 +810,8 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 								lineItem.setLineTotalAmount(XMLTools.tryBigDecimal(node));
 							}
 							break;
+						default:
+							break;
 					}
 				}
 			}
@@ -823,14 +831,14 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 		try {
 			nl = getNodeListByPath("//*[local-name() = 'IncludedSupplyChainTradeLineItem']");
 
+			for (int i = 0; i < nl.getLength(); i++) {
+				final Node n = nl.item(i);
+				lineItemNodes.add(n);
+			}
 		} catch (final Exception e) {
 			// Exception was already logged
 		}
 
-		for (int i = 0; i < nl.getLength(); i++) {
-			final Node n = nl.item(i);
-			lineItemNodes.add(n);
-		}
 		return lineItemNodes;
 	}
 
@@ -843,7 +851,7 @@ public class ZUGFeRDImporter extends ZUGFeRDInvoiceImporter {
 	 */
 	private Node getNodeByName(NodeList nl, String name) {
 		for (int i = 0; i < nl.getLength(); i++) {
-			if ((nl.item(i).getLocalName() != null) && (nl.item(i).getLocalName().equals(name))) {
+			if (nl.item(i).getLocalName() != null && nl.item(i).getLocalName().equals(name)) {
 				return nl.item(i);
 			} else if (nl.item(i).getChildNodes().getLength() > 0) {
 				final Node node = getNodeByName(nl.item(i).getChildNodes(), name);

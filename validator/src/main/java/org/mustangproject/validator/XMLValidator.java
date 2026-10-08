@@ -10,8 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.ParseException;
+import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Set;
+import java.util.List;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.transform.stream.StreamSource;
@@ -25,6 +26,7 @@ import org.mustangproject.CalculatedInvoice;
 import org.mustangproject.XMLTools;
 import org.mustangproject.ZUGFeRD.IZUGFeRDExportableItem;
 import org.mustangproject.ZUGFeRD.LineCalculator;
+import org.mustangproject.ZUGFeRD.Version;
 import org.mustangproject.ZUGFeRD.ZUGFeRDInvoiceImporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +41,9 @@ import com.helger.schematron.svrl.SVRLMarshaller;
 import com.helger.schematron.svrl.jaxb.SchematronOutputType;
 import com.helger.schematron.xslt.SchematronResourceXSLT;
 
-
+/****
+ * the Validator for the XML part of a Factur-X file, or of a CII or UBL standalone XML file
+ */
 public class XMLValidator extends Validator {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(XMLValidator.class.getCanonicalName()); // log output
@@ -47,13 +51,17 @@ public class XMLValidator extends Validator {
 	// ignored for the
 	// time being
 
+	private static final String ZUGEFERD_1_XSLT = "/xslt/ZUGFeRD_1p0.xslt";
+	private static final String EN16931_UBL_SCHEMATRON = "/xslt/en16931schematron/EN16931-UBL-validation.xslt";
+	private static final String OX10_COMFORT_XSLT = "/xslt/OX_10/comfort/SCRDMCCBDACIOMessageStructure_100pD20B_COMFORT.xslt";
+
 	protected String zfXML = "";
 	protected String filename = "";
-	int firedRules = 0;
-	int failedRules = 0;
-	boolean disableNotices = false;
-	ISchematronResource aResSCH = null;
-
+	int firedRules;
+	int failedRules;
+	boolean disableNotices;
+	boolean disableArithmeticCheck;
+	boolean disableXRechnungXSDValidation;
 
 	public XMLValidator(ValidationContext ctx) {
 		super(ctx);
@@ -72,11 +80,10 @@ public class XMLValidator extends Validator {
 			try {
 				zfXML = new String(XMLTools.removeBOM(Files.readAllBytes(Paths.get(filename))), StandardCharsets.UTF_8);
 			} catch (final IOException e) {
-
 				final ValidationResultItem vri = new ValidationResultItem(ESeverity.exception, e.getMessage()).setSection(9)
 					.setPart(EPart.fx);
-				try (final StringWriter sw = new StringWriter();
-					 final PrintWriter pw = new PrintWriter(sw)) {
+				try (StringWriter sw = new StringWriter();
+					 PrintWriter pw = new PrintWriter(sw)) {
 					e.printStackTrace(pw);
 					vri.setStacktrace(sw.toString());
 					context.addResultItem(vri);
@@ -105,7 +112,7 @@ public class XMLValidator extends Validator {
 	 * @return true if semantically identical
 	 */
 	public static boolean matchesURI(String uri1, String uri2) {
-		return (uri1 != null && (uri2 != null && (uri1.equals(uri2) || uri1.startsWith(uri2 + "#"))));
+		return uri1 != null && uri2 != null && (uri1.equals(uri2) || uri1.startsWith(uri2 + "#"));
 	}
 
 
@@ -114,6 +121,13 @@ public class XMLValidator extends Validator {
 	 */
 	public void disableNotices() {
 		disableNotices = true;
+	}
+
+	/***
+	 * don't perform the arithmetic recalculation check in the validation report
+	 */
+	public void disableArithmeticCheck() {
+		disableArithmeticCheck = true;
 	}
 
 
@@ -184,15 +198,15 @@ public class XMLValidator extends Validator {
 					context.setProfile(booking.getNodeValue());
 				}
 				boolean isOrderX = false;
-				boolean isDespatchAdvice = false;
 				boolean isMiniumum = false;
 				boolean isBasic = false;
 				boolean isBasicWithoutLines = false;
 				boolean isEN16931 = false;
 				boolean isExtended = false;
+				boolean isExtendedFR = false;
 				boolean isXRechnung = false;
 				String currentZFVersionDir = "ZF_250";
-				String currentXPZ12VersionDir ="XP_Z12_012";
+				String currentXPZ12VersionDir = "XP_Z12_014";
 				int mainSchematronSectionErrorTypeCode = 4;
 				String xsltFilename = null;
 				boolean runFrenchCiiSchematron = false;
@@ -209,10 +223,9 @@ public class XMLValidator extends Validator {
 					isOrderX = true;
 					isBasic = contextProfile.contains("basic");
 					isEN16931 = contextProfile.contains("comfort");
-					isExtended = contextProfile.contains("extended");
 					validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), "OX_10/comfort/SCRDMCCBDACIOMessageStructure_100pD20B.xsd", 99, EPart.ox);
-					xsltFilename = "/xslt/OX_10/comfort/SCRDMCCBDACIOMessageStructure_100pD20B_COMFORT.xslt";
-					
+					xsltFilename = XMLValidator.OX10_COMFORT_XSLT;
+
 				} else if (root.getLocalName().equalsIgnoreCase("CrossIndustryInvoice")) { // ZUGFeRD 2.0 or Factur-X
 					context.setGeneration("2");
 					final String sellerCountry = getXPathString(doc,
@@ -225,9 +238,9 @@ public class XMLValidator extends Validator {
 					isBasic = contextProfile.contains("basic");
 					isBasicWithoutLines = contextProfile.contains("basicwl");
 					if (isBasicWithoutLines) {
-						isBasic = false;// basicwl also contains the string basic...
+						isBasic = false; // basicwl also contains the string basic...
 					}
-					isEN16931 = Set.of(
+					isEN16931 = Arrays.asList(
 							"urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:en16931",
 							"urn:cen.eu:en16931:2017"
 						)
@@ -235,10 +248,11 @@ public class XMLValidator extends Validator {
 						.anyMatch(profile -> matchesURI(contextProfile, profile));
 
 					isExtended = contextProfile.contains("extended");
+					isExtendedFR = contextProfile.contains("extended-ctc-fr");
 					isXRechnung = contextProfile.contains("xrechnung");
 
-					if ((isExtended) || (isXRechnung)) {
-						isEN16931 = false;// the uri for extended is urn:cen.eu:en16931:2017#conformant#urn:zugferd.de:2p0:extended and thus contains en16931...
+					if (isExtended || isXRechnung) {
+						isEN16931 = false; // the uri for extended is urn:cen.eu:en16931:2017#conformant#urn:zugferd.de:2p0:extended and thus contains en16931...
 					}
 					if (isMiniumum) {
 						LOGGER.debug("is Minimum");
@@ -246,7 +260,7 @@ public class XMLValidator extends Validator {
 						xsltFilename = "/xslt/" + currentZFVersionDir + "/FACTUR-X_MINIMUM.xslt";
 					} else if (isBasicWithoutLines) {
 						LOGGER.debug("is Basic/WL");
-						validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), currentZFVersionDir + "/BASIC-WL/FACTUR-X_BASIC-WL.xsd", 18, EPart.fx);
+						validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), currentZFVersionDir + "/BASIC-WL/FACTUR-X_BASICWL.xsd", 18, EPart.fx);
 						xsltFilename = "/xslt/" + currentZFVersionDir + "/FACTUR-X_BASIC-WL.xslt";
 					} else if (isBasic) {
 						LOGGER.debug("is Basic");
@@ -259,16 +273,21 @@ public class XMLValidator extends Validator {
 					} else if (isXRechnung) {
 						LOGGER.debug("is XRechnung");
 						/*
-						the validation against the XRechnung Schematron will happen below but a
-						XRechnung is a EN16931 subset so the validation vis a vis FACTUR-X_EN16931.xslt=schematron also has to pass
-						* */
-						validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), currentZFVersionDir + "/EN16931/FACTUR-X_EN16931.xsd", 18, EPart.fx);
-
+							the validation against the XRechnung Schematron will happen below but a
+							XRechnung is a EN16931 subset so the validation vis a vis FACTUR-X_EN16931.xslt=schematron also has to pass
+						*/
+						if (!disableXRechnungXSDValidation) {
+							validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), currentZFVersionDir + "/EN16931/FACTUR-X_EN16931.xsd", 18, EPart.fx);
+						}
 						XrechnungSeverity = ESeverity.error;
 					} else if (isExtended) {
 						LOGGER.debug("is EXTENDED");
 						validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), currentZFVersionDir + "/EXTENDED/FACTUR-X_EXTENDED.xsd", 18, EPart.fx);
-						xsltFilename = "/xslt/" + currentZFVersionDir + "/FACTUR-X_EXTENDED.xslt";
+						if (isExtendedFR) {
+							xsltFilename = "/xslt/" + currentXPZ12VersionDir + "/EXTENDED-CTC-FR-CII_V1.4.04.xslt";
+						} else {
+							xsltFilename = "/xslt/" + currentZFVersionDir + "/FACTUR-X_EXTENDED.xslt";
+						}
 					}
 
 					// takes around 10 Seconds. //
@@ -284,7 +303,7 @@ public class XMLValidator extends Validator {
 					// UBL
 					LOGGER.debug("UBL");
 					validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), "UBL_21/maindoc/UBL-" + rootLocalName + "-2.1.xsd", 18, EPart.fx);
-					xsltFilename = "/xslt/en16931schematron/EN16931-UBL-validation.xslt";
+					xsltFilename = XMLValidator.EN16931_UBL_SCHEMATRON;
 
 					mainSchematronSectionErrorTypeCode = 24;
 
@@ -296,8 +315,8 @@ public class XMLValidator extends Validator {
 						* */
 						//validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), "ZF_211/EN16931/FACTUR-X_EN16931.xsd", 18, EPart.fx);
 						String xrVersion = contextProfile.substring(contextProfile.length() - 3).replace(".", "");
-						
-						Set<String> supportedVersions = Set.of("12", "20", "21", "22", "23", "30");
+
+						List<String> supportedVersions = Arrays.asList("12", "20", "21", "22", "23", "30");
 						if (!supportedVersions.contains(xrVersion)) {
 							throw new Exception("Unsupported XR version");
 						}
@@ -311,7 +330,7 @@ public class XMLValidator extends Validator {
 				} else if ("CrossIndustryDocument".equalsIgnoreCase(rootLocalName)) { // ZUGFeRD 1.0
 					context.setGeneration("1");
 					//
-					Set<String> validZF1Profiles = Set.of(
+					List<String> validZF1Profiles = Arrays.asList(
 						"urn:ferd:CrossIndustryDocument:invoice:1p0:basic",
 						"urn:ferd:CrossIndustryDocument:invoice:1p0:comfort",
 						"urn:ferd:CrossIndustryDocument:invoice:1p0:extended"
@@ -321,7 +340,7 @@ public class XMLValidator extends Validator {
 					}
 					validateSchema(zfXML.getBytes(StandardCharsets.UTF_8), "ZF_10/ZUGFeRD1p0.xsd", 18, EPart.fx);
 
-					xsltFilename = "/xslt/ZUGFeRD_1p0.xslt";
+					xsltFilename = XMLValidator.ZUGEFERD_1_XSLT;
 				} else { // unknown document root
 					context.addResultItem(new ValidationResultItem(ESeverity.fatal, "Unsupported root element")
 						.setSection(3).setPart(EPart.fx));
@@ -329,7 +348,7 @@ public class XMLValidator extends Validator {
 				if ("CII".equals(context.getFormat())) {
 
 					if ("2".equals(context.getGeneration())) {
-						Set<String> validZF2Profiles = Set.of(
+						List<String> validZF2Profiles = Arrays.asList(
 							"urn:factur-x.eu:1p0:minimum",
 							"urn:zugferd.de:2p0:minimum",
 							"urn:factur-x.eu:1p0:basicwl",
@@ -346,7 +365,7 @@ public class XMLValidator extends Validator {
 					} else /** v1 */ {
 						if (isOrderX) {
 							//order-x 1.0
-							if(Set.of(
+							if (Arrays.asList(
 								"urn:order-x.eu:1p0:basic",
 								"urn:order-x.eu:1p0:comfort",
 								"urn:order-x.eu:1p0:extended"
@@ -354,7 +373,7 @@ public class XMLValidator extends Validator {
 								addUnsupportedProfileResultItem();
 							}
 
-						} else if (Set.of(
+						} else if (Arrays.asList(
 							"urn:ferd:CrossIndustryDocument:invoice:1p0:basic",
 							"urn:ferd:CrossIndustryDocument:invoice:1p0:comfort",
 							"urn:ferd:CrossIndustryDocument:invoice:1p0:extended"
@@ -377,8 +396,8 @@ public class XMLValidator extends Validator {
 					// main schematron validation
 					validateSchematron(zfXML, xsltFilename, mainSchematronSectionErrorTypeCode, ESeverity.error);
 
-					if (runFrenchCiiSchematron) {
-						String xsltFRFilename = "/xslt/" + currentXPZ12VersionDir + "/20260216_BR-FR-Flux2-Schematron-CII_V1.3.0.xsl";
+					if (isExtendedFR && runFrenchCiiSchematron) {
+						String xsltFRFilename = "/xslt/" + currentXPZ12VersionDir + "/BR-FR-Flux2-Schematron-CII_V1.4.04.xslt";
 						validateSchematron(zfXML, xsltFRFilename, mainSchematronSectionErrorTypeCode, ESeverity.error);
 					}
 
@@ -386,18 +405,17 @@ public class XMLValidator extends Validator {
 
 				if ("CII".equals(context.getFormat()) && ("2".equals(context.getGeneration()))) {
 
-					if (isXRechnung) {
-						//additionally validate against CEN, the CEN rules are part of the ZF Schematron anyway
-						validateSchematron(zfXML, "/xslt/en16931schematron/EN16931-CII-validation.xslt", 24, ESeverity.error);
-					}
 					if (isXRechnung || isBasic || isEN16931) {
+						validateSchematron(zfXML, "/xslt/en16931schematron/EN16931-CII-validation.xslt", 24, ESeverity.error);
 						//potentially (basic or EN) or definitely validate against XR
 						if (!disableNotices || XrechnungSeverity != ESeverity.notice) {
 							validateXR(zfXML, XrechnungSeverity);
 						}
 					}
 				}
-				checkArithmetics(context);
+				if (!disableArithmeticCheck) {
+					checkArithmetics(context);
+				}
 
 
 			} catch (final IrrecoverableValidationError er) {
@@ -426,7 +444,7 @@ public class XMLValidator extends Validator {
 	private String getInfoXml(long endTime, long startXMLTime) {
 		String generation = context.getGeneration() != null ? context.getGeneration() : "invalid";
 		String profile = context.getProfile() != null ? context.getProfile() : "invalid";
-		String validatorVersion = XMLValidator.class.getPackage().getImplementationVersion();
+		String validatorVersion = Version.VERSION;
 		long duration = endTime - startXMLTime;
 
 		return String.format(
@@ -442,28 +460,23 @@ public class XMLValidator extends Validator {
 	}
 
 	private void checkArithmetics(ValidationContext context) {
-		ZUGFeRDInvoiceImporter zi=new ZUGFeRDInvoiceImporter();
+		ZUGFeRDInvoiceImporter zi = new ZUGFeRDInvoiceImporter();
 		try {
 			zi.fromXML(zfXML);
-			CalculatedInvoice ci=new CalculatedInvoice();
+			CalculatedInvoice ci = new CalculatedInvoice();
 			zi.extractInto(ci);
 
 			// check sub invoice line hierarchy if present
 			checkSubInvoiceLineHierarchy(ci, context);
-
 		} catch ( ArithmeticException e) {
 			try {
-				context.addResultItem(new ValidationResultItem(ESeverity.warning, "Arithmetical issue:"+e.getMessage()).setSection(10));
-
+				context.addResultItem(new ValidationResultItem(ESeverity.warning, "Arithmetical issue:" + e.getMessage()).setSection(10));
 			} catch (IrrecoverableValidationError ie) {
 				LOGGER.error(ie.getMessage(), ie);
 			}
-		} catch (XPathExpressionException e) {
-			LOGGER.error(e.getMessage(), e);
-		} catch (ParseException e) {
+		} catch (ParseException | XPathExpressionException e) {
 			LOGGER.error(e.getMessage(), e);
 		}
-
 	}
 
 	/***
@@ -595,21 +608,33 @@ public class XMLValidator extends Validator {
 			// SVRLHelper.getAllFailedAssertions (sout);
 			Document SVRLReport = new SVRLMarshaller().getAsDocument(sout);
 			XPath xPath = XPathFactory.newInstance().newXPath();
-			String expression = "//*[local-name() = 'failed-assert']";
+			// Failed assertions and successful reports are both findings. Their SVRL
+			// flag decides the severity, so a flagged warning or information never
+			// invalidates the document.
+			String expression = "//*[local-name() = 'failed-assert' or local-name() = 'successful-report']";
 			NodeList failedAsserts = null;
 			try {
 				failedAsserts = (NodeList) xPath.compile(expression).evaluate(SVRLReport, XPathConstants.NODESET);
 
-				String thisFailText = "";
-				String thisFailID = "";
-				String thisFailIDStr = "";
-				String thisFailTest = "";
-				String thisFailLocation = "";
 				if (failedAsserts.getLength() > 0) {
 
 					for (int nodeIndex = 0; nodeIndex < failedAsserts.getLength(); nodeIndex++) {
 						//nodes.item(i).getTextContent())) {
 						Node currentFailNode = failedAsserts.item(nodeIndex);
+						boolean successfulReport = "successful-report".equals(localName(currentFailNode));
+						Node failNode = currentFailNode.getAttributes().getNamedItem("flag");
+						String failVal = failNode == null ? null : failNode.getNodeValue();
+						if (successfulReport && failVal == null) {
+							// Older embedded stylesheets (e.g. ZUGFeRD 1.0 and 2.0) emit unflagged
+							// reports for components not used in a profile; they were never findings.
+							continue;
+						}
+						// Each finding carries only its own metadata.
+						String thisFailText = "";
+						String thisFailID = "";
+						String thisFailIDStr = "";
+						String thisFailTest = "";
+						String thisFailLocation = "";
 						if (currentFailNode.getAttributes().getNamedItem("id") != null) {
 							thisFailID = currentFailNode.getAttributes().getNamedItem("id").getNodeValue();
 							thisFailIDStr = " [ID " + thisFailID + "]";
@@ -622,8 +647,6 @@ public class XMLValidator extends Validator {
 						}
 
 						ESeverity severity;
-						Node failNode = currentFailNode.getAttributes().getNamedItem("flag");
-						String failVal = failNode == null ? null : failNode.getNodeValue();
 						if (defaultSeverity == ESeverity.notice) {
 							severity = defaultSeverity;
 						} else if ("warning".equals(failVal)) {
@@ -632,6 +655,8 @@ public class XMLValidator extends Validator {
 						} else if ("information".equals(failVal)) {
 							severity = ESeverity.notice;
 						} else {
+							// fatal, error, and a missing assertion flag invalidate the document;
+							// ESeverity.fatal would abort the validation instead
 							severity = ESeverity.error;
 						}
 
@@ -647,7 +672,7 @@ public class XMLValidator extends Validator {
 							}
 						}
 
-						LOGGER.info("FailedAssert {}", thisFailText);
+						LOGGER.info(successfulReport ? "SuccessfulReport {}" : "FailedAssert {}", thisFailText);
 
 						context.addResultItem(new ValidationResultItem(severity, thisFailText + thisFailIDStr + " from " + xsltFilename + ")")
 							.setLocation(thisFailLocation).setCriterion(thisFailTest).setSection(section).setID(thisFailID)
@@ -695,6 +720,14 @@ public class XMLValidator extends Validator {
 		}
 	}
 
+
+	private static String localName(Node node) {
+		if (node.getLocalName() != null) {
+			return node.getLocalName();
+		}
+		String name = node.getNodeName();
+		return name.substring(name.indexOf(':') + 1);
+	}
 
 	public int getFiredRules() {
 		return firedRules;

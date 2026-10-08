@@ -5,7 +5,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import org.mustangproject.ZUGFeRD.IZUGFeRDExportableContact;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-import java.util.Set;
+
+import java.util.Arrays;
+import java.util.List;
 
 /***
  * a named contact person in an organisation
@@ -47,7 +49,7 @@ public class Contact implements IZUGFeRDExportableContact {
 	/**
 	 * the fax number of the contact person
 	 */
-	protected String fax = null;
+	protected String fax;
 
 	/***
 	 * default constructor.
@@ -115,9 +117,9 @@ public class Contact implements IZUGFeRDExportableContact {
 				String localName = currentItemNode.getLocalName();
 				if (localName != null) {
 
-					Set<String> nameElements = Set.of("PersonName"/*CII*/, "Name"/*UBL*/);
+					List<String> nameElements = Arrays.asList("PersonName"/*CII*/, "Name"/*UBL*/);
 					if (localName != null && nameElements.contains(localName)
-						&& currentItemNode.getFirstChild()!=null) {
+						&& currentItemNode.getFirstChild() != null) {
 							setName(currentItemNode.getFirstChild().getNodeValue());
 						}
 
@@ -136,11 +138,11 @@ public class Contact implements IZUGFeRDExportableContact {
 
 					// CII: only for Extended profile
 					if (localName.equals("FaxUniversalCommunication")) { /* CII */
-						NodeList fax = currentItemNode.getChildNodes();
-						for (int faxChildIndex = 0; faxChildIndex < fax.getLength(); faxChildIndex++) {
-							String faxLocalName = fax.item(faxChildIndex).getLocalName();
+						NodeList nl = currentItemNode.getChildNodes();
+						for (int faxChildIndex = 0; faxChildIndex < nl.getLength(); faxChildIndex++) {
+							String faxLocalName = nl.item(faxChildIndex).getLocalName();
 							if (faxLocalName != null && faxLocalName.equals("CompleteNumber")) {
-									setFax(fax.item(faxChildIndex).getTextContent());
+									setFax(nl.item(faxChildIndex).getTextContent());
 								}
 
 						}
@@ -149,11 +151,11 @@ public class Contact implements IZUGFeRDExportableContact {
 					}
 
 					if (localName.equals("EmailURIUniversalCommunication")) { /* CII */
-						NodeList email = currentItemNode.getChildNodes();
-						for (int emailChildIndex = 0; emailChildIndex < email.getLength(); emailChildIndex++) {
-							String emailLocalName = email.item(emailChildIndex).getLocalName();
+						NodeList nl = currentItemNode.getChildNodes();
+						for (int emailChildIndex = 0; emailChildIndex < nl.getLength(); emailChildIndex++) {
+							String emailLocalName = nl.item(emailChildIndex).getLocalName();
 							if (emailLocalName != null && emailLocalName.equals("URIID")) {
-									setEMail(email.item(emailChildIndex).getTextContent());
+									setEMail(nl.item(emailChildIndex).getTextContent());
 								}
 
 						}
@@ -212,6 +214,7 @@ public class Contact implements IZUGFeRDExportableContact {
 		return this;
 	}
 
+	@Override
 	public String getEMail() {
 		return email;
 	}
@@ -226,6 +229,7 @@ public class Contact implements IZUGFeRDExportableContact {
 		return this;
 	}
 
+	@Override
 	public String getZIP() {
 		return zip;
 	}

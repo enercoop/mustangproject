@@ -18,6 +18,10 @@
  *********************************************************************** */
 package org.mustangproject.ZUGFeRD;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,20 +31,20 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
 
-import junit.framework.TestCase;
+import org.junit.jupiter.api.Test;
 import org.mustangproject.TradeParty;
 
 /***
  * This is a test to confirm the minimum steps to implement a interface are still sufficient
- * 
+ *
  * @author jstaerk
  *
  */
-public class BackwardCompatibilityTest extends TestCase implements IExportableTransaction {
+public class BackwardCompatibilityTest implements IExportableTransaction {
 
-	final String TARGET_PDF_ZF1 = "./target/testout-MustangGnuaccountingBeispielRE-20171118_506zf1.pdf";
-	final String TARGET_PDF_ZF2 = "./target/testout-MustangGnuaccountingBeispielRE-20171118_506zf2.pdf";
-	final String TARGET_PDF_FX = "./target/testout-MustangGnuaccountingBeispielRE-20171118_506fx.pdf";
+	private static final String TARGET_PDF_ZF1 = "./target/testout-MustangGnuaccountingBeispielRE-20171118_506zf1.pdf";
+	private static final String TARGET_PDF_ZF2 = "./target/testout-MustangGnuaccountingBeispielRE-20171118_506zf2.pdf";
+	private static final String TARGET_PDF_FX = "./target/testout-MustangGnuaccountingBeispielRE-20171118_506fx.pdf";
 
 	/**
 	 * The exporter test bases on @{code
@@ -50,15 +54,14 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 	 * importer test (which is probably redundant). As only Name Ascending is
 	 * supported for Test Unit sequence, I renamed the Exporter Test test-Z-Export
 	 */
+	@Test
 	public void testZF1Export() {
 
 
 		// the writing part
-		try (InputStream SOURCE_PDF = this.getClass()
-			.getResourceAsStream("/MustangGnuaccountingBeispielRE-20190610_507blanko.pdf");
-
-			 IZUGFeRDExporter ze = new ZUGFeRDExporterFromA1().setZUGFeRDVersion(1).setProfile(Profiles.getByName("Extended",1)).load(SOURCE_PDF)) {
-
+		try (InputStream SOURCE_PDF = this.getClass().getResourceAsStream("/MustangGnuaccountingBeispielRE-20190610_507blanko.pdf");
+			 IZUGFeRDExporter ze = new ZUGFeRDExporterFromA1()) {
+			ze.setZUGFeRDVersion(1).setProfile(Profiles.getByName("Extended", 1)).load(SOURCE_PDF);
 			ze.setTransaction(this);
 			ze.disableAutoClose(true);
 			ze.export(TARGET_PDF_ZF1);
@@ -67,12 +70,11 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 			ze.export(baos);
 			ze.close();
 			String pdfContent = baos.toString(StandardCharsets.UTF_8);
-			assertFalse(pdfContent.indexOf("(via mustangproject.org") == -1);
+			assertNotEquals(-1, pdfContent.indexOf("(via mustangproject.org"));
 			// check for pdf-a schema extension
 //			assertFalse(pdfContent.indexOf("<zf:ConformanceLevel>EN 16931</zf:ConformanceLevel>") == -1);
 //			assertFalse(pdfContent.indexOf("<pdfaSchema:prefix>zf</pdfaSchema:prefix>") == -1);
 //			assertFalse(pdfContent.indexOf("urn:zugferd:pdfa:CrossIndustryDocument:invoice:2p0#") == -1);
-
 		} catch (IOException e) {
 			fail("IOException should not happen in testZExport");
 		}
@@ -81,24 +83,21 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 		ZUGFeRDImporter zi = new ZUGFeRDImporter(TARGET_PDF_ZF1);
 
 		// Reading ZUGFeRD
-		assertEquals(zi.getAmount(), "571.04");
-		assertEquals(zi.getBIC(), getTradeSettlementPayment()[0].getOwnBIC());
-		assertEquals(zi.getIBAN(), getTradeSettlementPayment()[0].getOwnIBAN());
-		assertEquals(zi.getHolder(), getOwnOrganisationName());
-		assertEquals(zi.getForeignReference(), getNumber());
-		
-		
+		assertEquals("571.04", zi.getAmount());
+		assertEquals(getTradeSettlement()[0].getOwnBIC(), zi.getBIC());
+		assertEquals(getTradeSettlement()[0].getOwnIBAN(), zi.getIBAN());
+		assertEquals(getOwnOrganisationName(), zi.getHolder());
+		assertEquals(getNumber(), zi.getForeignReference());
 	}
 
+	@Test
 	public void testZF2Export() {
 
-	
+
 		// the writing part
-		try (InputStream SOURCE_PDF = this.getClass()
-			.getResourceAsStream("/MustangGnuaccountingBeispielRE-20190610_507blanko.pdf");
-
-			 IZUGFeRDExporter ze = new ZUGFeRDExporterFromA1().setZUGFeRDVersion(2).setProfile("EN16931").load(SOURCE_PDF)) {
-
+		try (InputStream SOURCE_PDF = this.getClass().getResourceAsStream("/MustangGnuaccountingBeispielRE-20190610_507blanko.pdf");
+			 IZUGFeRDExporter ze = new ZUGFeRDExporterFromA1()) {
+			ze.setZUGFeRDVersion(2).setProfile(Profiles.getByName("EN16931", 2)).load(SOURCE_PDF);
 			ze.setTransaction(this);
 			ze.disableAutoClose(true);
 			ze.export(TARGET_PDF_ZF2);
@@ -107,7 +106,7 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 			ze.export(baos);
 			ze.close();
 			String pdfContent = baos.toString(StandardCharsets.UTF_8);
-			assertFalse(pdfContent.indexOf("(via mustangproject.org") == -1);
+			assertNotEquals(-1, pdfContent.indexOf("(via mustangproject.org"));
 			// check for pdf-a schema extension
 //			assertFalse(pdfContent.indexOf("<zf:ConformanceLevel>EN 16931</zf:ConformanceLevel>") == -1);
 //			assertFalse(pdfContent.indexOf("<pdfaSchema:prefix>zf</pdfaSchema:prefix>") == -1);
@@ -121,22 +120,23 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 		ZUGFeRDImporter zi = new ZUGFeRDImporter(TARGET_PDF_ZF2);
 
 		// Reading ZUGFeRD
-		assertEquals(zi.getAmount(), "571.04");
-		assertEquals(zi.getBIC(), getTradeSettlementPayment()[0].getOwnBIC());
-		assertEquals(zi.getIBAN(), getTradeSettlementPayment()[0].getOwnIBAN());
-		assertEquals(zi.getHolder(), getOwnOrganisationName());
-		assertEquals(zi.getForeignReference(), getNumber());
-		
-		
+		assertEquals("571.04", zi.getAmount());
+		assertEquals(getTradeSettlement()[0].getOwnBIC(), zi.getBIC());
+		assertEquals(getTradeSettlement()[0].getOwnIBAN(), zi.getIBAN());
+		assertEquals(getOwnOrganisationName(), zi.getHolder());
+		assertEquals(getNumber(), zi.getForeignReference());
+
+
 	}
+
+	@Test
 	public void testFXExport() {
 
 		// the writing part
-		try (InputStream SOURCE_PDF = this.getClass()
-			.getResourceAsStream("/MustangGnuaccountingBeispielRE-20190610_507blanko.pdf");
+		try (InputStream SOURCE_PDF = this.getClass().getResourceAsStream("/MustangGnuaccountingBeispielRE-20190610_507blanko.pdf");
+			IZUGFeRDExporter ze = new ZUGFeRDExporterFromA1()) {
 
-			 IZUGFeRDExporter ze = new ZUGFeRDExporterFromA1().setZUGFeRDVersion(2).setProfile("EN16931").load(SOURCE_PDF)) {
-
+			ze.setZUGFeRDVersion(2).setProfile(Profiles.getByName("EN16931")).load(SOURCE_PDF);
 			ze.setTransaction(this);
 			ze.disableAutoClose(true);
 			ze.export(TARGET_PDF_FX);
@@ -145,7 +145,7 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 			ze.export(baos);
 			ze.close();
 			String pdfContent = baos.toString(StandardCharsets.UTF_8);
-			assertFalse(pdfContent.indexOf("(via mustangproject.org") == -1);
+			assertNotEquals(-1, pdfContent.indexOf("(via mustangproject.org"));
 			// check for pdf-a schema extension
 //			assertFalse(pdfContent.indexOf("<zf:ConformanceLevel>EN 16931</zf:ConformanceLevel>") == -1);
 //			assertFalse(pdfContent.indexOf("<pdfaSchema:prefix>zf</pdfaSchema:prefix>") == -1);
@@ -159,42 +159,47 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 		ZUGFeRDImporter zi = new ZUGFeRDImporter(TARGET_PDF_FX);
 
 		// Reading ZUGFeRD
-		assertEquals(zi.getAmount(), "571.04");
-		assertEquals(zi.getBIC(), getTradeSettlementPayment()[0].getOwnBIC());
-		assertEquals(zi.getIBAN(), getTradeSettlementPayment()[0].getOwnIBAN());
-		assertEquals(zi.getHolder(), getOwnOrganisationName());
-		assertEquals(zi.getForeignReference(), getNumber());
-		
-		
+		assertEquals("571.04", zi.getAmount());
+		assertEquals(getTradeSettlement()[0].getOwnBIC(), zi.getBIC());
+		assertEquals(getTradeSettlement()[0].getOwnIBAN(), zi.getIBAN());
+		assertEquals(getOwnOrganisationName(), zi.getHolder());
+		assertEquals(getNumber(), zi.getForeignReference());
 	}
+
 	class Contact implements IZUGFeRDExportableContact {
+		@Override
 		public String getCountry() {
 			return "DE";
 		}
 
+		@Override
 		public String getLocation() {
 			return "Spielkreis";
 		}
 
+		@Override
 		public String getName() {
 			return "Theodor Est";
 		}
 
+		@Override
 		public String getStreet() {
 			return "Bahnstr. 42";
 		}
 
+		@Override
 		public String getVATID() {
 			return "DE999999999";
 		}
 
+		@Override
 		public String getZIP() {
 			return "88802";
 		}
 
 	}
-   class Payment implements IZUGFeRDTradeSettlementPayment {
 
+	class Payment implements IZUGFeRDTradeSettlementPayment {
 		@Override
 		public String getOwnBIC() {
 			return "bla";
@@ -208,15 +213,15 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 	}
 
 	class Item implements IZUGFeRDExportableItem {
-		public Item(BigDecimal price, BigDecimal quantity, Product product) {
+		private BigDecimal price, quantity;
+		private Product product;
+
+		Item(BigDecimal price, BigDecimal quantity, Product product) {
 			super();
 			this.price = price;
 			this.quantity = quantity;
 			this.product = product;
 		}
-
-		private BigDecimal price, quantity;
-		private Product product;
 
 		public BigDecimal getPrice() {
 			return price;
@@ -242,28 +247,28 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 			this.product = product;
 		}
 
+		@Override
 		public IZUGFeRDAllowanceCharge[] getItemAllowances() {
-			// TODO Auto-generated method stub
 			return null;
 		}
 
+		@Override
 		public IZUGFeRDAllowanceCharge[] getItemCharges() {
-			// TODO Auto-generated method stub
 			return null;
 		}
 	}
 
 	class Product implements IZUGFeRDExportableProduct {
-		public Product(String description, String name, String unit, BigDecimal vATPercent) {
+		private String description, name, unit;
+		private BigDecimal vatPercent;
+
+		Product(String description, String name, String unit, BigDecimal vATPercent) {
 			super();
 			this.description = description;
 			this.name = name;
 			this.unit = unit;
-			VATPercent = vATPercent;
+			vatPercent = vATPercent;
 		}
-
-		private String description, name, unit;
-		private BigDecimal VATPercent;
 
 		public String getDescription() {
 			return description;
@@ -290,11 +295,11 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 		}
 
 		public BigDecimal getVATPercent() {
-			return VATPercent;
+			return vatPercent;
 		}
 
 		public void setVATPercent(BigDecimal vATPercent) {
-			VATPercent = vATPercent;
+			vatPercent = vATPercent;
 		}
 	}
 
@@ -304,34 +309,33 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 	}
 
 
-
 	@Override
 	public IZUGFeRDExportableTradeParty getRecipient() {
-		return new TradeParty("name","street","zip","city","DE");
+		return new TradeParty("name", "street", "zip", "city", "DE");
 	}
 
 	@Override
 	public IZUGFeRDExportableTradeParty getSender() {
-		return new TradeParty("Bei Spiel GmbH","street","zip","city","DE");
+		return new TradeParty("Bei Spiel GmbH", "street", "zip", "city", "DE");
 	}
-	
-		
+
+
 	//
-  public IZUGFeRDTradeSettlementPayment[] getTradeSettlementPayment() {
+	@Override
+	public IZUGFeRDTradeSettlementPayment[] getTradeSettlement() {
 		Payment P = new Payment();
 		IZUGFeRDTradeSettlementPayment[] allP = new Payment[1];
 		allP[0] = P;
 		return allP;
-
 	}
 
+	@Override
 	public IZUGFeRDAllowanceCharge[] getZFAllowances() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
+	@Override
 	public IZUGFeRDAllowanceCharge[] getZFCharges() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
@@ -349,8 +353,8 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 		return allItems;
 	}
 
-	public IZUGFeRDAllowanceCharge[] getZFLogisticsServiceCharges() {
-		// TODO Auto-generated method stub
+	@Override
+	public IZUGFeRDLogisticsServiceCharge[] getZFLogisticsServiceCharges() {
 		return null;
 	}
 
@@ -371,7 +375,6 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 	}
 
 
-
 	public String getOwnBIC() {
 		return "COBADEFFXXX";
 	}
@@ -389,7 +392,7 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 	public String getOwnIBAN() {
 		return "DE88 2008 0000 0970 3757 00";
 	}
-	
+
 
 	@Override
 	public String getOwnLocation() {
@@ -426,8 +429,6 @@ public class BackwardCompatibilityTest extends TestCase implements IExportableTr
 	public String getOwnZIP() {
 		return "12345";
 	}
-
-
 
 
 }
