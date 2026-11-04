@@ -19,6 +19,7 @@
 package org.mustangproject.ZUGFeRD;
 
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -94,7 +95,12 @@ public class OXExporterFromA1 extends OXExporterFromA3 {
 	}
 
 	private static boolean isValidA1(DataSource dataSource) throws IOException {
-		return getPDFAParserValidationResult(PreflightParserHelper.createPreflightParser(dataSource));
+		final File tempFile = PreflightParserHelper.createTmpFile(dataSource.getInputStream());
+		try {
+			return getPDFAParserValidationResult(new PreflightParser(tempFile));
+		} finally {
+			tempFile.delete();
+		}
 	}
 
 	private static boolean getPDFAParserValidationResult(PreflightParser parser) throws IOException {

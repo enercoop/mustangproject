@@ -9,7 +9,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 import org.apache.pdfbox.io.IOUtils;
-import org.apache.pdfbox.preflight.parser.PreflightParser;
 
 import jakarta.activation.DataSource;
 
@@ -65,7 +64,7 @@ final class PreflightParserHelper {
 		// to avoid instantiation
 	}
 
-	private static File createTmpFile(final InputStream input) throws IOException {
+	public static File createTmpFile(final InputStream input) throws IOException {
 		FileOutputStream fos = null;
 		try {
 			final File tmpFile = File.createTempFile("mustang-pdf", ".pdf");
@@ -77,9 +76,5 @@ final class PreflightParserHelper {
 			IOUtils.closeQuietly(input);
 			IOUtils.closeQuietly(fos);
 		}
-	}
-
-	public static PreflightParser createPreflightParser(final DataSource dataSource) throws IOException {
-		return new PreflightParser(createTmpFile(dataSource.getInputStream()));
 	}
 }

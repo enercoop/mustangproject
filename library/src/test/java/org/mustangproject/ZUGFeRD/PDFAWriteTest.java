@@ -21,6 +21,7 @@
  */
 package org.mustangproject.ZUGFeRD;
 
+import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.File;
@@ -28,11 +29,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.nio.file.Path;
 import java.util.Date;
 
 import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.mustangproject.BankDetails;
 import org.mustangproject.Contact;
@@ -67,6 +68,23 @@ public class PDFAWriteTest extends ResourceCase {
 		}
 		assertEquals(0, exceptions);
 	}
+
+	@Test
+	public void testA1NoTempFile() throws IOException {
+		TradeParty recipient = new TradeParty("Franz Müller", "teststr.12", "55232", "Entenhausen", "DE");
+
+		Invoice i = createInvoice(recipient);
+		File tempFile = getResourceAsFile("MustangGnuaccountingBeispielRE-20201121_508blanko.pdf"); //a3
+
+		ZUGFeRDExporterFromA1 zea3 = new ZUGFeRDExporterFromA1().load(tempFile.getAbsolutePath());
+		zea3.setTransaction(i);
+		zea3.export(TARGET_PDF_FROM_A1);
+
+		assertEquals(0, Files.list(Paths.get("/tmp"))
+			.filter(filesName -> filesName.toString().startsWith("/tmp/mustang-pdf"))
+			.count());
+	}
+
 
 	@Test
 	public void testA3KnownExport() {
